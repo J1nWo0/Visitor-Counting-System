@@ -213,13 +213,6 @@ class Algorithm_Count:
         cv2.destroyAllWindows()
 
 
-"""
-"""
-
-
-
-
-
 
 if __name__ == '__main__':
     area1 = [(312, 388), (289, 390), (474, 469), (497, 462)]
