@@ -39,7 +39,7 @@ class Color:
 
 color = Color()
 tracker = Tracker()
-model=YOLO('yolo-Weights\yolov8s-seg.pt')
+model=YOLO('yolo-Weights\yolov8s.pt')
 
 
 class Algorithm_Count:
@@ -130,6 +130,7 @@ class Algorithm_Count:
     def person_bounding_boxes(self, frame, x1, y1, x2, y2, id):
         if id != -1:
             cv2.rectangle(frame, (x1, y1), (x2, y2), color.rectangle(), 2)
+            cvzone.putTextRect(frame, str(id), (x1, y1 - 10), 1,1, color.text1(), color.text2())
 
     def people_entering(self, frame, x1, y1, x2, y2, id, label):
         result_p1 = cv2.pointPolygonTest(np.array(self.area2,np.int32), ((x2,y2)), False)
@@ -177,9 +178,9 @@ class Algorithm_Count:
     def main(self, video_path):
         cap = cv2.VideoCapture(video_path)
 
-        downloads_path = os.path.join(os.path.expanduser('~'), 'Downloads')
-        output_file_path = os.path.join(downloads_path, 'output_video.avi')
-        out = cv2.VideoWriter(output_file_path,cv2.VideoWriter_fourcc(*'XVID'), 24.0, (1020,500))
+        # downloads_path = os.path.join(os.path.expanduser('~'), 'Downloads')
+        # output_file_path = os.path.join(downloads_path, 'output_video.avi')
+        # out = cv2.VideoWriter(output_file_path,cv2.VideoWriter_fourcc(*'XVID'), 24.0, (1020,500))
 
         while True:
             if not self.paused:
@@ -194,7 +195,7 @@ class Algorithm_Count:
                 detections = self.detect_BboxOnly(frame)
                 self.counter(frame, detections)
 
-                out.write(frame)
+                # out.write(frame)
                 # self.show_time(frame)
                 cv2.imshow('Frame', frame)
 
@@ -209,7 +210,7 @@ class Algorithm_Count:
             #if cv2.waitKey(0)&0xFF == 27: continue
 
         cap.release()
-        out.release()
+        # out.release()
         cv2.destroyAllWindows()
 
 
