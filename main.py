@@ -89,9 +89,9 @@ class VideoProcessor:
 
 
 if __name__ == "__main__":
-    a1 = [(312,388),(289,390),(474,469),(497,462)]
+    a1 = [] #[(312,388),(289,390),(474,469),(497,462)]
     a2 = []
-    in_video_path = "Sample Test File\\test_video.mp4"
+    in_video_path = 0 #"Sample Test File\\test_video.mp4"
 
     video_processor = VideoProcessor(in_video_path, a1, a2)
     video_processor.process_video()

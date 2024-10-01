@@ -5,6 +5,7 @@ import time
 import numpy as np
 from ultralytics import YOLO
 from tracker import *
+import torch
 
 
 class Color:
@@ -36,10 +37,13 @@ class Color:
         orange = (0,119,255)
         return orange
 
+# Check for CUDA device and set it
+device = 'cuda' if torch.cuda.is_available() else 'cpu'
+print(f'Using device: {device}')
 
 color = Color()
 tracker = Tracker()
-model=YOLO('yolo-Weights\yolov8s.pt')
+model=YOLO('yolo-Weights\yolov8s.pt').to(device)
 
 
 class Algorithm_Count:
@@ -115,14 +119,17 @@ class Algorithm_Count:
 
         # counting the number of detected objects/person
         bbox_id = tracker.update(list)
+        # print(bbox_id)
 
         for bbox in bbox_id:
             x1, y1, x2, y2, id = bbox
             label = f"{id} Person: {score:.2f}"
+            
 
             self.person_bounding_boxes(frame, x1, y1, x2, y2, id)
             self.people_entering(frame, x1, y1, x2, y2, id, label)
             self.people_exiting(frame, x1, y1, x2, y2, id, label)
+            
 
         self.draw_polylines(frame)
 
@@ -198,6 +205,7 @@ class Algorithm_Count:
                 # out.write(frame)
                 # self.show_time(frame)
                 cv2.imshow('Frame', frame)
+                print(self.peopleEntering)
 
             key = cv2.waitKey(1)&0xFF
             if cv2.getWindowProperty('Frame', cv2.WND_PROP_VISIBLE) < 1: 
@@ -218,6 +226,6 @@ class Algorithm_Count:
 if __name__ == '__main__':
     area1 = [(312, 388), (289, 390), (474, 469), (497, 462)]
     area2 = [(279, 392), (250, 397), (423, 477), (454, 469)]
-    sample_video_path = 'Sample Test File\\test_video.mp4'
+    sample_video_path =  'Sample Test File\\test_video.mp4'
     algo = Algorithm_Count(area1, area2)
     algo.main(sample_video_path)
