@@ -45,6 +45,7 @@ color = Color()
 tracker = Tracker()
 model=YOLO('yolo-Weights\yolov8s.pt').to(device)
 
+# print()
 
 class Algorithm_Count:
     def __init__(self, a1, a2):
