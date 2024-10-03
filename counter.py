@@ -43,9 +43,9 @@ print(f'Using device: {device}')
 
 color = Color()
 tracker = Tracker()
-model=YOLO('yolo-Weights\yolov8s.pt').to(device)
+model=YOLO('yolo-Weights\yolov8x.pt').to(device)
 
-# print()
+
 
 class Algorithm_Count:
     def __init__(self, a1, a2):
@@ -227,6 +227,6 @@ class Algorithm_Count:
 if __name__ == '__main__':
     area1 = [(312, 388), (289, 390), (474, 469), (497, 462)]
     area2 = [(279, 392), (250, 397), (423, 477), (454, 469)]
-    sample_video_path =  'Sample Test File\\test_video.mp4'
+    sample_video_path =  0 #'Sample Test File\\test_video.mp4'
     algo = Algorithm_Count(area1, area2)
     algo.main(sample_video_path)
