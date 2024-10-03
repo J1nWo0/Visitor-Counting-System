@@ -2,4 +2,4 @@
 /test1.py
 /test2.py
 /__pycache__
-/try.ipynb
+*/.ipynb_checkpoints/*.ipynb
