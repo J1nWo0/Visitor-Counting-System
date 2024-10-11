@@ -43,18 +43,20 @@ print(f'Using device: {device}')
 
 color = Color()
 tracker = Tracker()
-model=YOLO('yolo-Weights\yolov8x.pt').to(device)
+model=YOLO('yolo-Weights\\yolo11n.pt').to(device)
 
 
 
 class Algorithm_Count:
-    def __init__(self, a1, a2):
+    def __init__(self, file_path, a1, a2, frame_size):
         self.peopleEntering = {}
         self.entering = set()
         self.peopleExiting = {}
         self.exiting = set()
+        self.file_path = file_path
         self.area1 = a1
         self.area2 = a2
+        self.frame_size = frame_size
         self.paused = False
         self.coordinates = []
         self.start_time = time.time()
@@ -63,12 +65,32 @@ class Algorithm_Count:
 
 
     def detect_BboxOnly(self, frame):
-        results = model(frame, conf=0.6, classes=[0])
-        for result in results:
-            detections = []
-            for r in result.boxes.data.tolist():
-                x1, y1, x2, y2, score, class_id = r
-                detections.append([int(x1), int(y1), int(x2), int(y2), float(score)])
+        results = model.track(frame, conf=0.6, classes=[0], persist=True, tracker="bytetrack.yaml")
+
+        detections = []
+        for r in results:  # Iterate through the results
+            boxes = r.boxes  # Extract bounding boxes
+            
+            for box in boxes:
+                # Extracting bounding box coordinates
+                x1, y1, x2, y2 = box.xyxy[0]  # Get the top-left (x1, y1) and bottom-right (x2, y2) coordinates
+                
+                # Extracting the tracking ID (if present)
+                id = box.id if box.id is not None else -1  # ID will be -1 if there's no ID assigned
+                
+                # Extracting confidence score
+                score = box.conf[0] if box.conf is not None else 0.0  # Default to 0.0 if confidence is missing
+
+                # # Append to the detections list as a tuple
+                # detections.append({
+                #     "id": int(id),  # Tracking ID (or -1 if not tracked)
+                #     "x1": int(x1),  # Top-left x-coordinate
+                #     "y1": int(y1),  # Top-left y-coordinate
+                #     "x2": int(x2),  # Bottom-right x-coordinate
+                #     "y2": int(y2)   # Bottom-right y-coordinate
+                # })
+                detections.append([int(x1), int(y1), int(x2), int(y2), int(id), float(score)])
+        
         return detections
     
     def detect_withSegments(self, frame):
@@ -105,40 +127,24 @@ class Algorithm_Count:
         cvzone.putTextRect(frame,time_str, (20,480), 1,1, color.text1(), color.text2())
 
     def counter(self, frame, detections):
-        list = []
-        for box in detections:
-            if len(box) == 5:
-                x1, y1, x2, y2, score = box
-                class_id = 0  # Default class ID for a person
-            elif len(box) == 6:
-                x1, y1, x2, y2, score, class_id = box
-            else: continue  # Skip boxes with unexpected length
 
-            if class_id == 0:  # Assuming person class is 0
-                # label = f"Person: {score:.2f}"
-                list.append([x1, y1, x2, y2])
-
-        # counting the number of detected objects/person
-        bbox_id = tracker.update(list)
-        # print(bbox_id)
-
-        for bbox in bbox_id:
-            x1, y1, x2, y2, id = bbox
+        for bbox in detections:
+            x1, y1, x2, y2, id, score = bbox
             label = f"{id} Person: {score:.2f}"
             
 
-            self.person_bounding_boxes(frame, x1, y1, x2, y2, id)
+            self.person_bounding_boxes(frame, x1, y1, x2, y2, id, score)
             self.people_entering(frame, x1, y1, x2, y2, id, label)
             self.people_exiting(frame, x1, y1, x2, y2, id, label)
             
 
         self.draw_polylines(frame)
 
-
-    def person_bounding_boxes(self, frame, x1, y1, x2, y2, id):
+    def person_bounding_boxes(self, frame, x1, y1, x2, y2, id, score):
         if id != -1:
             cv2.rectangle(frame, (x1, y1), (x2, y2), color.rectangle(), 2)
-            cvzone.putTextRect(frame, str(id), (x1, y1 - 10), 1,1, color.text1(), color.text2())
+            cvzone.putTextRect(frame,  f"{id}: {score:.2f}", (x1, y1 - 10), 1,1, color.text1(), color.text2())
+            cv2.circle(frame, (x2, y2), 4, color.point(), -1)  
 
     def people_entering(self, frame, x1, y1, x2, y2, id, label):
         result_p1 = cv2.pointPolygonTest(np.array(self.area2,np.int32), ((x2,y2)), False)
@@ -183,19 +189,19 @@ class Algorithm_Count:
         cvzone.putTextRect(frame,str(f"Exit: {exit}"), (20,60), 1,1, color.text1(), color.text2())
 
 
-    def main(self, video_path):
-        cap = cv2.VideoCapture(video_path)
+    def main(self):
+        cap = cv2.VideoCapture(self.file_path)
 
-        # downloads_path = os.path.join(os.path.expanduser('~'), 'Downloads')
-        # output_file_path = os.path.join(downloads_path, 'output_video.avi')
-        # out = cv2.VideoWriter(output_file_path,cv2.VideoWriter_fourcc(*'XVID'), 24.0, (1020,500))
+        downloads_path = os.path.join(os.path.expanduser('~'), 'Downloads')
+        output_file_path = os.path.join(downloads_path, 'output_video.avi')
+        out = cv2.VideoWriter(output_file_path,cv2.VideoWriter_fourcc(*'XVID'), 24.0, self.frame_size)
 
         while True:
             if not self.paused:
                 ret, frame = cap.read()
                 if not ret: break
 
-                frame = cv2.resize(frame,(1020,500))
+                frame = cv2.resize(frame,self.frame_size)
 
                 #results = model.track(frame, persist=True, conf=0.5)
                 #frame_ = results[0].plot()
@@ -203,7 +209,7 @@ class Algorithm_Count:
                 detections = self.detect_BboxOnly(frame)
                 self.counter(frame, detections)
 
-                # out.write(frame)
+                out.write(frame)
                 # self.show_time(frame)
                 cv2.imshow('Frame', frame)
                 print(self.peopleEntering)
@@ -219,14 +225,16 @@ class Algorithm_Count:
             #if cv2.waitKey(0)&0xFF == 27: continue
 
         cap.release()
-        # out.release()
+        out.release()
         cv2.destroyAllWindows()
 
 
 
 if __name__ == '__main__':
-    area1 = [(312, 388), (289, 390), (474, 469), (497, 462)]
-    area2 = [(279, 392), (250, 397), (423, 477), (454, 469)]
-    sample_video_path =  0 #'Sample Test File\\test_video.mp4'
-    algo = Algorithm_Count(area1, area2)
-    algo.main(sample_video_path)
+    area1 = [(359, 559), (400, 559), (667, 675), (632, 681)]
+    area2 = [(346, 563), (313, 566), (579, 703), (624, 694)]
+    sample_video_path = 'Sample Test File\\test_video.mp4'
+    frame_width = 1280
+    frame_height = int(frame_width / 16 * 9)   
+    algo = Algorithm_Count(sample_video_path, area1, area2, (frame_width, frame_height))
+    algo.main()
