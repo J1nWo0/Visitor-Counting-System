@@ -43,7 +43,7 @@ print(f'Using device: {device}')
 
 color = Color()
 tracker = Tracker()
-model=YOLO('yolo-Weights\\yolo11n.pt').to(device)
+model=YOLO('yolo-Weights\\yolo11n-seg.pt').to(device)
 
 
 
@@ -64,23 +64,24 @@ class Algorithm_Count:
         cv2.namedWindow('Frame')
 
 
-    def detect_BboxOnly(self, frame):
-        results = model.track(frame, conf=0.6, classes=[0], persist=True, tracker="bytetrack.yaml")
+    def detect_object(self, frame):
+        results = model.track(frame, conf=0.6, classes=[i for i in range(0, 80)], persist=True, tracker="bytetrack.yaml")
 
         detections = []
         for r in results:  # Iterate through the results
             boxes = r.boxes  # Extract bounding boxes
+            masks = r.masks  # Extract segmentation masks (if present)
             
-            for box in boxes:
+            for i, box in enumerate(boxes):
                 # Extracting bounding box coordinates
                 x1, y1, x2, y2 = box.xyxy[0]  # Get the top-left (x1, y1) and bottom-right (x2, y2) coordinates
-                
                 # Extracting the tracking ID (if present)
                 id = box.id if box.id is not None else -1  # ID will be -1 if there's no ID assigned
-                
                 # Extracting confidence score
                 score = box.conf[0] if box.conf is not None else 0.0  # Default to 0.0 if confidence is missing
-
+                # Extract segmentation mask if available (convert mask to numpy array)
+                mask = np.array(masks[i].xy, dtype=np.int32) if masks is not None else None  # Convert mask to numpy array if it exists
+                
                 # # Append to the detections list as a tuple
                 # detections.append({
                 #     "id": int(id),  # Tracking ID (or -1 if not tracked)
@@ -89,30 +90,10 @@ class Algorithm_Count:
                 #     "x2": int(x2),  # Bottom-right x-coordinate
                 #     "y2": int(y2)   # Bottom-right y-coordinate
                 # })
-                detections.append([int(x1), int(y1), int(x2), int(y2), int(id), float(score)])
+                detections.append([int(x1), int(y1), int(x2), int(y2), int(id), float(score), mask])
         
         return detections
     
-    def detect_withSegments(self, frame):
-        height, width, channels = frame.shape
-
-        results = self.model.predict(source=frame.copy(), save=False, save_txt=False)
-        result = results[0]
-        segmentation_contours_idx = []
-        for seg in result.masks.xyn:
-            # contours
-            seg[:, 0] *= width
-            seg[:, 1] *= height
-            segment = np.array(seg, dtype=np.int32)
-            segmentation_contours_idx.append(segment)
-
-        bboxes = np.array(result.boxes.xyxy.cpu(), dtype="int")
-        # Get class ids
-        class_ids = np.array(result.boxes.cls.cpu(), dtype="int")
-        # Get scores
-        scores = np.array(result.boxes.conf.cpu(), dtype="float").round(2)
-        return bboxes, class_ids, segmentation_contours_idx, scores
-
     def show_time(self, frame):
         elapsed_time = time.time() - self.start_time
 
@@ -128,23 +109,27 @@ class Algorithm_Count:
 
     def counter(self, frame, detections):
 
-        for bbox in detections:
-            x1, y1, x2, y2, id, score = bbox
+        for detect in detections:
+            x1, y1, x2, y2, id, score, mask = detect
             label = f"{id} Person: {score:.2f}"
             
 
-            self.person_bounding_boxes(frame, x1, y1, x2, y2, id, score)
+            self.person_bounding_boxes(frame, x1, y1, x2, y2, id, score, mask)
             self.people_entering(frame, x1, y1, x2, y2, id, label)
             self.people_exiting(frame, x1, y1, x2, y2, id, label)
             
 
         self.draw_polylines(frame)
 
-    def person_bounding_boxes(self, frame, x1, y1, x2, y2, id, score):
+    def person_bounding_boxes(self, frame, x1, y1, x2, y2, id, score, mask):
         if id != -1:
             cv2.rectangle(frame, (x1, y1), (x2, y2), color.rectangle(), 2)
             cvzone.putTextRect(frame,  f"{id}: {score:.2f}", (x1, y1 - 10), 1,1, color.text1(), color.text2())
             cv2.circle(frame, (x2, y2), 4, color.point(), -1)  
+            # Check if mask is valid and draw it
+            if mask is not None:
+                # cv2.fillPoly(frame, [mask], color.center_point()) # Fill the mask with a color
+                cv2.polylines(frame, [mask], True, color.center_point(), 2)  # Draw the mask outline
 
     def people_entering(self, frame, x1, y1, x2, y2, id, label):
         result_p1 = cv2.pointPolygonTest(np.array(self.area2,np.int32), ((x2,y2)), False)
@@ -206,13 +191,13 @@ class Algorithm_Count:
                 #results = model.track(frame, persist=True, conf=0.5)
                 #frame_ = results[0].plot()
 
-                detections = self.detect_BboxOnly(frame)
+                detections = self.detect_object(frame)
                 self.counter(frame, detections)
 
                 out.write(frame)
                 # self.show_time(frame)
                 cv2.imshow('Frame', frame)
-                print(self.peopleEntering)
+                
 
             key = cv2.waitKey(1)&0xFF
             if cv2.getWindowProperty('Frame', cv2.WND_PROP_VISIBLE) < 1: 
@@ -220,13 +205,16 @@ class Algorithm_Count:
             elif key == ord('p'):
                 self.paused = not self.paused
 
-
+        
             #if cv2.waitKey()&0xFF == ord('q'): break
             #if cv2.waitKey(0)&0xFF == 27: continue
 
         cap.release()
         out.release()
         cv2.destroyAllWindows()
+
+        # return date of people entering and exiting
+        return [len(self.entering), len(self.exiting)]
 
 
 
@@ -237,4 +225,5 @@ if __name__ == '__main__':
     frame_width = 1280
     frame_height = int(frame_width / 16 * 9)   
     algo = Algorithm_Count(sample_video_path, area1, area2, (frame_width, frame_height))
-    algo.main()
+    r=algo.main()
+    print(r)
