@@ -9,33 +9,21 @@ import torch
 
 
 class Color:
-    def boundingBox1(self):
-        green = (0,255,0)
-        return green
-    def boundingBox2(self):
-        yellow = (0,255,255)
-        return yellow
-    def text1(self):
-        white = (255,255,255)
-        return white
-    def text2(self):
-        black = (0,0,0)
-        return black
-    def area1(self):
-        blue = (255,0,0)
-        return blue
-    def area2(self):
-        red = (0, 0, 255)
-        return red
-    def point(self):
-        pink = (255,0,255)
-        return pink 
-    def center_point(self):
-        cyan = (255,255,0)
-        return cyan
-    def rectangle(self):
-        orange = (0,119,255)
-        return orange
+    def __init__(self):
+        self.colors = {
+            'boundingBox1': (0, 255, 0),
+            'boundingBox2': (0, 255, 255),
+            'text1': (255, 255, 255),
+            'text2': (0, 0, 0),
+            'area1': (255, 0, 0),
+            'area2': (0, 0, 255),
+            'point': (255, 0, 255),
+            'center_point': (255, 255, 0),
+            'rectangle': (0, 119, 255)
+        }
+
+    def __getattr__(self, item):
+        return lambda: self.colors[item]
 
 # Check for CUDA device and set it
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
