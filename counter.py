@@ -28,7 +28,6 @@ class Color:
 # Initialize color manager
 color = Color()
 
-
 # Check for CUDA device and set it
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 print(f'Using device: {device}')
