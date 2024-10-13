@@ -1,7 +1,5 @@
 # Ignore Python script files
-/test.py
-/test1.py
-/test2.py
+/Test
 
 # Ignore Python cache directories
 /__pycache__

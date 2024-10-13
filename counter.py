@@ -4,22 +4,23 @@ import cvzone
 import time
 import numpy as np
 from ultralytics import YOLO
-from tracker import *
 import torch
 
 # Define a class to manage colors used in the application
 class Color:
     def __init__(self):
+        # Define a dictionary to store various colors used in the application
         self.colors = {
-            'boundingBox1': (0, 255, 0),
-            'boundingBox2': (0, 255, 255),
-            'text1': (255, 255, 255),
-            'text2': (0, 0, 0),
-            'area1': (255, 0, 0),
-            'area2': (0, 0, 255),
-            'point': (255, 0, 255),
-            'center_point': (255, 255, 0),
-            'rectangle': (0, 119, 255)
+            'boundingBox1': (0, 255, 0),       # Green color for bounding box 1
+            'boundingBox2': (0, 255, 255),     # Yellow color for bounding box 2
+            'text1': (255, 255, 255),          # White color for primary text
+            'text2': (0, 0, 0),                # Black color for secondary text
+            'area1': (255, 0, 0),              # Blue color for area 1
+            'area2': (0, 0, 255),              # Red color for area 2
+            'point': (255, 0, 255),            # Magenta color for points
+            'center_point': (255, 255, 0),     # Cyan color for center points
+            'rectangle': (0, 119, 255),        # Orange color for rectangles
+            'mask': (128, 128, 128)            # Gray color for masks
         }
 
     def __getattr__(self, item):
@@ -31,10 +32,8 @@ print(f'Using device: {device}')
 
 # Initialize color manager
 color = Color()
-# Initialize tracker
-tracker = Tracker()
 # Load YOLO model and move it to the appropriate device
-model = YOLO('yolo-Weights\\yolo11n-seg.pt').to(device)
+model = YOLO('yolo-Weights\\yolo11n.pt').to(device)
 print("device:", device)
 
 # Define a class to handle the counting algorithm
@@ -58,25 +57,29 @@ class Algorithm_Count:
 
     # Method to detect objects in a frame
     def detect_object(self, frame):
-        results = model.track(frame, conf=0.6, classes=[i for i in range(0, 80)], persist=True, tracker="bytetrack.yaml")
+        results = model.track(frame, conf=0.6, classes=[0], persist=True, tracker="bytetrack.yaml")
 
         detections = []
         for r in results:  # Iterate through the results
             boxes = r.boxes  # Extract bounding boxes
             masks = r.masks  # Extract segmentation masks (if present)
             
-            for i, box in enumerate(boxes):
+            for mask_id, box in enumerate(boxes):
                 # Extracting bounding box coordinates
                 x1, y1, x2, y2 = box.xyxy[0]  # Get the top-left (x1, y1) and bottom-right (x2, y2) coordinates
                 # Extracting the tracking ID (if present)
-                id = box.id if box.id is not None else -1  # ID will be -1 if there's no ID assigned
+                box_id = box.id if box.id is not None else -1  # ID will be -1 if there's no ID assigned
                 # Extracting confidence score
                 score = box.conf[0] if box.conf is not None else 0.0  # Default to 0.0 if confidence is missing
+                # Extracting the class index (if present)
+                class_id = box.cls[0] if box.cls is not None else -1  # Default to -1 if class is missing
                 # Extract segmentation mask if available (convert mask to numpy array)
-                mask = np.array(masks[i].xy, dtype=np.int32) if masks is not None else None  # Convert mask to numpy array if it exists
+                mask = np.array(masks[mask_id].xy, dtype=np.int32) if masks is not None else None  # Convert mask to numpy array if it exists
+
+
                 
                 # Append to the detections list as a tuple
-                detections.append([int(x1), int(y1), int(x2), int(y2), int(id), float(score), mask])
+                detections.append([int(x1), int(y1), int(x2), int(y2), int(box_id), int(class_id), float(score), mask])
         
         return detections
     
@@ -97,24 +100,24 @@ class Algorithm_Count:
     # Method to count people entering and exiting
     def counter(self, frame, detections):
         for detect in detections:
-            x1, y1, x2, y2, id, score, mask = detect
-            label = f"{id} Person: {score:.2f}"
+            x1, y1, x2, y2, box_id, class_id, score, mask = detect
+            label = f"{box_id} Person: {score:.2f}"
             
-            self.person_bounding_boxes(frame, x1, y1, x2, y2, id, score, mask)
-            self.people_entering(frame, x1, y1, x2, y2, id, label)
-            self.people_exiting(frame, x1, y1, x2, y2, id, label)
+            self.person_bounding_boxes(frame, x1, y1, x2, y2, box_id, class_id, score, mask)
+            self.people_entering(frame, x1, y1, x2, y2, box_id, label)
+            self.people_exiting(frame, x1, y1, x2, y2, box_id, label)
             
         self.draw_polylines(frame)
 
     # Method to draw bounding boxes around detected persons
-    def person_bounding_boxes(self, frame, x1, y1, x2, y2, id, score, mask):
-        if id != -1:
+    def person_bounding_boxes(self, frame, x1, y1, x2, y2, box_id, class_id, score, mask):
+        if box_id != -1:
             cv2.rectangle(frame, (x1, y1), (x2, y2), color.rectangle(), 2)
-            cvzone.putTextRect(frame, f"{id}: {score:.2f}", (x1, y1 - 10), 1, 1, color.text1(), color.text2())
+            cvzone.putTextRect(frame, f"{class_id}: {box_id}: {score:.2f}", (x1, y1 - 10), 1, 1, color.text1(), color.text2())
             cv2.circle(frame, (x2, y2), 4, color.point(), -1)  
             # Check if mask is valid and draw it
             if mask is not None:
-                # cv2.fillPoly(frame, [mask], color.center_point()) # Fill the mask with a color
+                # cv2.fillPoly(frame, [mask], color.mask()) # Fill the mask with a color
                 cv2.polylines(frame, [mask], True, color.center_point(), 2)  # Draw the mask outline
 
     # Method to track people entering a specified area
