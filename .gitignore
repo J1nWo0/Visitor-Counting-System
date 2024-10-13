@@ -1,14 +1,16 @@
 # Ignore Python script files
-/test.py
-/test1.py
-/test2.py
+/Test
 
 # Ignore Python cache directories
 /__pycache__
+/.venv
 
 # Ignore Jupyter notebook checkpoint directories
-.ipynb_checkpoints
 /.ipynb_checkpoints
+.ipynb_checkpoints
+
+# Ignore VSCode directory
+/.vscode
 
 # Ignore all Jupyter notebook files
 *.ipynb
