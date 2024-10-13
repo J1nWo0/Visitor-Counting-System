@@ -125,19 +125,18 @@ class ClickPoints:
                 cv2.destroyAllWindows()
                 # Return the coordinates
                 return self.clicked_points
-'''
-if __name__ == "__main__":
-    video_path = "D:\Project Programming\Person Detection Counting\Sample Test File\\test_video.mp4"  # Replace with the path to your video
-    list1 = []
-    list2 = []
-    #list=[(312,388),(289,390),(474,469),(497,462)]
-    #list=[(279,392),(250,397),(423,477),(454,469)]
-    click_points_app = ClickPoints(video_path, list2)
-    list1 = click_points_app.run()
 
-    # Access the coordinates returned after the run method is called
-    if not list1 or len(list1) < 4:
-        print("No coordinates or Incomplete")
-    else: 
-        print("Coordinates from ClickPoints:", list1)
-'''
+# if __name__ == "__main__":
+#     video_path = 'Sample Test File\\test_video.mp4'  # Replace with the path to your video
+#     list1 = []
+#     list2 = []
+#     #list=[(312,388),(289,390),(474,469),(497,462)]
+#     #list=[(279,392),(250,397),(423,477),(454,469)]
+#     click_points_app = ClickPoints(video_path, list2)
+#     list1 = click_points_app.run()
+
+#     # Access the coordinates returned after the run method is called
+#     if not list1 or len(list1) < 4:
+#         print("No coordinates or Incomplete")
+#     else: 
+#         print("Coordinates from ClickPoints:", list1)

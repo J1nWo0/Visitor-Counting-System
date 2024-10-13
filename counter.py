@@ -25,21 +25,22 @@ class Color:
 
     def __getattr__(self, item):
         return lambda: self.colors[item]
+# Initialize color manager
+color = Color()
+
 
 # Check for CUDA device and set it
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 print(f'Using device: {device}')
-
-# Initialize color manager
-color = Color()
 # Load YOLO model and move it to the appropriate device
 model = YOLO('yolo-Weights\\yolo11n.pt').to(device)
 print("device:", device)
 
+
 # Define a class to handle the counting algorithm
 class Algorithm_Count:
     def __init__(self, file_path, a1, a2, frame_size):
-        self.peopleEntering = {}
+        self.peopleEntering = {}    
         self.entering = set()
         self.peopleExiting = {}
         self.exiting = set()
