@@ -96,10 +96,10 @@ class ClickPoints:
             # Draw the box on the image
             cv2.polylines(self.image, [points_array], isClosed=True, color=(255, 0, 0), thickness=2)
 
-    def run(self):
+    def run(self, frame_size):
         
         while True:
-            self.image = cv2.resize(self.image, (1020,500))
+            self.image = cv2.resize(self.image, frame_size)
             self.is_have_predefined_list()
             self.display_coordinates()
             cv2.imshow("Set Coordinates", self.image)
