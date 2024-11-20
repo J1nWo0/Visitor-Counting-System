@@ -5,6 +5,7 @@ import time
 import numpy as np
 from ultralytics import YOLO
 import torch
+import datetime  # Import for timestamp
 
 # Define a class to manage colors used in the application
 class Color:
@@ -28,13 +29,12 @@ class Color:
 # Initialize color manager
 color = Color()
 
-
 # Check for CUDA device and set it
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 print(f'Using device: {device}')
 # Load YOLO model and move it to the appropriate device
-model = YOLO('yolo-Weights\\yolo11n.pt').to(device)
-print("device:", device)
+model_person = YOLO('yolo-Weights/yolo11n.pt').to(device)  # Model for person segmentation
+model_face = YOLO('yolo-Weights/yolov10n-face.pt').to(device)   # Model for face detection
 
 
 # Define a class to handle the counting algorithm
@@ -56,32 +56,31 @@ class Algorithm_Count:
         # Create a named window for displaying frames
         cv2.namedWindow(self.name_frame)
 
-    # Method to detect objects in a frame
-    def detect_object(self, frame):
-        results = model.track(frame, conf=0.6, classes=[0], persist=True, tracker="bytetrack.yaml")
+    # # Method to detect objects in a frame
+    def detect_BboxOnly(self, frame):
+        # Detect persons and faces using different models
+        results_person = model_person.track(frame, conf=0.6, classes=[0], persist=True, tracker="bytetrack.yaml")  # Detect persons only (class 0)
+        results_face = model_face.track(frame, conf=0.6, classes=[0], persist=True, tracker="bytetrack.yaml")  # Detect faces
 
+        # Process results
+        person_detections = self.process_results(results_person)
+        face_detections = self.process_results(results_face)
+
+        return person_detections, face_detections
+
+    def process_results(self, results):
         detections = []
-        for r in results:  # Iterate through the results
-            boxes = r.boxes  # Extract bounding boxes
-            masks = r.masks  # Extract segmentation masks (if present)
-            
-            for mask_id, box in enumerate(boxes):
-                # Extracting bounding box coordinates
-                x1, y1, x2, y2 = box.xyxy[0]  # Get the top-left (x1, y1) and bottom-right (x2, y2) coordinates
-                # Extracting the tracking ID (if present)
-                box_id = box.id if box.id is not None else -1  # ID will be -1 if there's no ID assigned
-                # Extracting confidence score
-                score = box.conf[0] if box.conf is not None else 0.0  # Default to 0.0 if confidence is missing
-                # Extracting the class index (if present)
-                class_id = box.cls[0] if box.cls is not None else -1  # Default to -1 if class is missing
-                # Extract segmentation mask if available (convert mask to numpy array)
-                mask = np.array(masks[mask_id].xy, dtype=np.int32) if masks is not None else None  # Convert mask to numpy array if it exists
+        for r in results:
+            boxes = r.boxes
+            masks = r.masks
+            for i, box in enumerate(boxes):
+                x1, y1, x2, y2 = box.xyxy[0]
+                id = box.id if box.id is not None else -1
+                score = box.conf[0] if box.conf is not None else 0.0
+                class_id = box.cls[0] if box.cls is not None else -1
+                mask = np.array(masks[i].xy, dtype=np.int32) if masks is not None else None
+                detections.append([int(x1), int(y1), int(x2), int(y2), int(id), float(score), int(class_id), mask])
 
-
-                
-                # Append to the detections list as a tuple
-                detections.append([int(x1), int(y1), int(x2), int(y2), int(box_id), int(class_id), float(score), mask])
-        
         return detections
     
     # Method to display elapsed time on the frame
@@ -98,15 +97,20 @@ class Algorithm_Count:
         time_str = "Running Time: {:02}:{:02}:{:06.3f}".format(int(hours), int(minutes), seconds)
         cvzone.putTextRect(frame, time_str, (20, 480), 1, 1, color.text1(), color.text2())
 
+    def change_coord_point(self, x1, x2, y1, y2):
+        new_x = int(x1 + (x2 - x1) * 0.5)  # 50% from the left edge
+        new_y = int(y2 - (y2 - y1) * 0.04)  # 4% from the bottom edge
+        return new_x, new_y
+
     # Method to count people entering and exiting
     def counter(self, frame, detections):
         for detect in detections:
-            x1, y1, x2, y2, box_id, class_id, score, mask = detect
+            x1, y1, x2, y2, box_id, score, class_id, mask = detect
             label = f"{box_id} Person: {score:.2f}"
             
             self.person_bounding_boxes(frame, x1, y1, x2, y2, box_id, class_id, score, mask)
-            self.people_entering(frame, x1, y1, x2, y2, box_id, label)
-            self.people_exiting(frame, x1, y1, x2, y2, box_id, label)
+            self.track_people_entering(frame, x1, y1, x2, y2, box_id, label)
+            self.track_people_exiting(frame, x1, y1, x2, y2, box_id, label)
             
         self.draw_polylines(frame)
 
@@ -115,41 +119,44 @@ class Algorithm_Count:
         if box_id != -1:
             cv2.rectangle(frame, (x1, y1), (x2, y2), color.rectangle(), 2)
             cvzone.putTextRect(frame, f"{class_id}: {box_id}: {score:.2f}", (x1, y1 - 10), 1, 1, color.text1(), color.text2())
-            cv2.circle(frame, (x2, y2), 4, color.point(), -1)  
+            cx, cy = self.change_coord_point(x1, x2, y1, y2)
+            cv2.circle(frame, (cx, cy), 4, color.point(), -1)  
             # Check if mask is valid and draw it
             if mask is not None:
                 # cv2.fillPoly(frame, [mask], color.mask()) # Fill the mask with a color
                 cv2.polylines(frame, [mask], True, color.center_point(), 2)  # Draw the mask outline
 
     # Method to track people entering a specified area
-    def people_entering(self, frame, x1, y1, x2, y2, id, label):
-        result_p1 = cv2.pointPolygonTest(np.array(self.area2, np.int32), ((x2, y2)), False)
+    def track_people_entering(self, frame, x1, y1, x2, y2, id, label):
+        cx, cy = self.change_coord_point(x1, x2, y1, y2)
+        result_p1 = cv2.pointPolygonTest(np.array(self.area2, np.int32), ((cx, cy)), False)
         if result_p1 >= 0:
-            self.peopleEntering[id] = (x2, y2) 
+            self.peopleEntering[id] = {'coords': (cx, cy), 'time': datetime.datetime.now()}  # Add timestamp
             cv2.rectangle(frame, (x1, y1), (x2, y2), color.boundingBox2(), 2)
             cvzone.putTextRect(frame, label, (x1 + 10, y1 - 10), 1, 1, color.text1(), color.text2()) 
         if id in self.peopleEntering:
-            result_p2 = cv2.pointPolygonTest(np.array(self.area1, np.int32), ((x2, y2)), False)
+            result_p2 = cv2.pointPolygonTest(np.array(self.area1, np.int32), ((cx, cy)), False)
             if result_p2 >= 0:
                 cv2.rectangle(frame, (x1, y1), (x2, y2), color.boundingBox1(), 2)
-                cv2.circle(frame, (x2, y2), 4, color.point(), -1)  
+                cv2.circle(frame, (cx, cy), 4, color.point(), -1)  
                 cvzone.putTextRect(frame, label, (x1 + 10, y1 - 10), 1, 1, color.text1(), color.text2())
-                self.entering.add(id)
+                self.entering.add((id, self.peopleEntering[id]['time']))
 
     # Method to track people exiting a specified area
-    def people_exiting(self, frame, x1, y1, x2, y2, id, label):
-        result_p3 = cv2.pointPolygonTest(np.array(self.area1, np.int32), ((x2, y2)), False)
+    def track_people_exiting(self, frame, x1, y1, x2, y2, id, label):
+        cx, cy = self.change_coord_point(x1, x2, y1, y2)
+        result_p3 = cv2.pointPolygonTest(np.array(self.area1, np.int32), ((cx, cy)), False)
         if result_p3 >= 0:
-            self.peopleExiting[id] = (x2, y2) 
+            self.peopleExiting[id] = {'coords': (cx, cy), 'time': datetime.datetime.now()}  # Add timestamp
             cv2.rectangle(frame, (x1, y1), (x2, y2), color.boundingBox1(), 2)
             cvzone.putTextRect(frame, label, (x1 + 10, y1 - 10), 1, 1, color.text1(), color.text2()) 
         if id in self.peopleExiting:
-            result_p4 = cv2.pointPolygonTest(np.array(self.area2, np.int32), ((x2, y2)), False)
+            result_p4 = cv2.pointPolygonTest(np.array(self.area2, np.int32), ((cx, cy)), False)
             if result_p4 >= 0:
                 cv2.rectangle(frame, (x1, y1), (x2, y2), color.boundingBox2(), 2)
-                cv2.circle(frame, (x2, y2), 4, color.point(), -1)  
+                cv2.circle(frame, (cx, cy), 4, color.point(), -1)  
                 cvzone.putTextRect(frame, label, (x1 + 10, y1 - 10), 1, 1, color.text1(), color.text2())
-                self.exiting.add(id)
+                self.exiting.add((id, self.peopleExiting[id]['time']))
 
     # Method to draw polylines for specified areas and display counts
     def draw_polylines(self, frame):
@@ -175,8 +182,9 @@ class Algorithm_Count:
 
                 frame = cv2.resize(frame, self.frame_size)
 
-                detections = self.detect_object(frame)
-                self.counter(frame, detections)
+                # detections = self.detect_object(frame)
+                detections_person, detections_face = self.detect_BboxOnly(frame)
+                self.counter(frame, detections_person)
 
                 out.write(frame)
                 # self.show_time(frame)
@@ -197,7 +205,13 @@ class Algorithm_Count:
         cv2.destroyAllWindows()
 
         # Return count of people entering and exiting
-        return [len(self.entering), len(self.exiting)]
+        result = {
+            'total_people_entering': len(self.entering),
+            'total_people_exiting': len(self.exiting),
+            'entering_details': sorted([{'person_id': person[0], 'time': person[1].strftime('%Y-%m-%d %H:%M:%S')} for person in self.entering], key=lambda x: x['time']),
+            'exiting_details': sorted([{'person_id': person[0], 'time': person[1].strftime('%Y-%m-%d %H:%M:%S')} for person in self.exiting], key=lambda x: x['time'])
+        }
+        return  result
 
 if __name__ == '__main__':
     area1 = [(359, 559), (400, 559), (667, 675), (632, 681)]
