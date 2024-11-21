@@ -90,7 +90,8 @@ class VideoProcessor:
         print("Coordinates from ClickPoints (Area 2):", self.area2_coordinates)
 
         algo = Algorithm_Count(self.in_video_path, self.area1_coordinates, self.area2_coordinates, self.frame_size)
-        algo.main()
+        r = algo.main()
+        print(r)
 
 
 if __name__ == "__main__":
