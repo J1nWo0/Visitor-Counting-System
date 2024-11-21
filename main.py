@@ -93,7 +93,6 @@ class VideoProcessor:
         r = algo.main()
         print(r)
 
-
 if __name__ == "__main__":
     a1 = [] #[(312,388),(289,390),(474,469),(497,462)]
     a2 = []
