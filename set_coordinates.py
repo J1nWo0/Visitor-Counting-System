@@ -52,10 +52,11 @@ class ClickPoints:
             # Create a box using the clicked points
             self.create_box()
 
-    def display_coordinates(self):
+    def display_coordinates(self, frame_size):
         p, i = 0, 1
-        cvzone.putTextRect(self.image,'Press [s] to save coordinates', (750,30), 1,1, (255,255,255), (0,0,0))
-        cvzone.putTextRect(self.image,'Press [r] to reset coordinates', (750,60), 1,1, (255,255,255), (0,0,0))
+        w, h = frame_size
+        cvzone.putTextRect(self.image,'Press [s] to save coordinates', (w-290,30), 1,1, (255,255,255), (0,0,0))
+        cvzone.putTextRect(self.image,'Press [r] to reset coordinates', (w-290,60), 1,1, (255,255,255), (0,0,0))
         
         for x, y in self.clicked_points:
             cvzone.putTextRect(self.image,str(f"Point {i}: X: {x}, Y: {y}"), (20,30+p), 1,1, (255,255,255), (0,0,0))
@@ -101,7 +102,7 @@ class ClickPoints:
         while True:
             self.image = cv2.resize(self.image, frame_size)
             self.is_have_predefined_list()
-            self.display_coordinates()
+            self.display_coordinates(frame_size)
             cv2.imshow("Set Coordinates", self.image)
 
             # Press 'Esc' to exit the loop
@@ -133,7 +134,9 @@ class ClickPoints:
 #     #list=[(312,388),(289,390),(474,469),(497,462)]
 #     #list=[(279,392),(250,397),(423,477),(454,469)]
 #     click_points_app = ClickPoints(video_path, list2)
-#     list1 = click_points_app.run()
+#     frame_width = 1050
+#     frame_height = int(frame_width / 16 * 9)  
+#     list1 = click_points_app.run(frame_size=(frame_width, frame_height))
 
 #     # Access the coordinates returned after the run method is called
 #     if not list1 or len(list1) < 4:
