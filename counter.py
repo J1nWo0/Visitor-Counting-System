@@ -41,7 +41,7 @@ model_face = YOLO('yolo-Weights/yolov10n-face.pt').to(device)   # Model for face
 
 # Define a class to handle the counting algorithm
 class Algorithm_Count:
-    def __init__(self, file_path, a1, a2, frame_size):
+    def __init__(self, file_path, a1, a2, coords, frame_size):
         """
         Initializes the counter object with the given parameters.
         Args:
@@ -75,12 +75,13 @@ class Algorithm_Count:
         self.coordinates = []
         self.name_frame = 'People Counting System'
         self.start_time = time.time()
+        self.coordinates = coords
 
         # Create a named window for displaying frames
         cv2.namedWindow(self.name_frame)
 
     # Method to detect objects in a frame
-    def detect_BboxOnly(self, frame):
+    def detect_person(self, frame):
         """
         Detects persons and faces in a given video frame using pre-trained models.
         Args:
@@ -94,13 +95,32 @@ class Algorithm_Count:
         """
         # Detect persons and faces using different models
         results_person = model_person.track(frame, conf=0.6, classes=[0], persist=True, tracker="bytetrack.yaml")  # Detect persons only (class 0)
-        results_face = model_face.track(frame, conf=0.6, classes=[0], persist=True, tracker="bytetrack.yaml")  # Detect faces
 
         # Process results
         person_detections = self.process_results(results_person)
+
+        return person_detections
+    
+    # Method to detect objects in a frame
+    def detect_face_person(self, frame):
+        """
+        Detects persons and faces in a given video frame using pre-trained models.
+        Args:
+            frame (numpy.ndarray): The input video frame in which to detect persons and faces.
+        Returns:
+            tuple: A tuple containing two lists:
+                - person_detections (list): A list of detected persons with their bounding boxes.
+                - face_detections (list): A list of detected faces with their bounding boxes.
+        ##### The function uses two different models to detect persons and faces in the input frame.
+        ##### It processes the detection results and returns the bounding boxes for both persons and faces.
+        """
+        # Detect persons and faces using different models
+        results_face = model_face.track(frame, conf=0.6, classes=[0], persist=True, tracker="bytetrack.yaml")  # Detect faces
+
+        # Process results
         face_detections = self.process_results(results_face)
 
-        return person_detections, face_detections
+        return face_detections
 
     # Method to process the detection results
     def process_results(self, results):
@@ -172,12 +192,13 @@ class Algorithm_Count:
         Returns:
             tuple: A tuple containing the new x and y coordinates (new_x, new_y).
         """
-        new_x = int(x1 + (x2 - x1) * 0.5)  # 50% from the left edge
-        new_y = int(y2 - (y2 - y1) * 0.04)  # 4% from the bottom edge
+        x, y = (0.5, 0.04) if self.coordinates is None else self.coordinates
+        new_x = int(x1 + (x2 - x1) * x)  # 50% from the left edge
+        new_y = int(y2 - (y2 - y1) * y)  # 4% from the bottom edge
         return new_x, new_y
 
     # Method to count people entering and exiting
-    def counter(self, frame, detections_person, detections_face):
+    def counter(self, frame, detections_person):
         """
         Processes the given frame to count and track people entering and exiting.
         Args:
@@ -200,6 +221,7 @@ class Algorithm_Count:
             label = f"{box_id} Person: {score:.2f}"
             
             self.person_bounding_boxes(frame, x1, y1, x2, y2, box_id, class_id, score, mask)
+            detections_face = self.detect_face_person(frame)
             self.face_bounding_boxes(frame, detections_face)
             self.track_people_entering(frame, x1, y1, x2, y2, box_id, label)
             self.track_people_exiting(frame, x1, y1, x2, y2, box_id, label)
@@ -229,9 +251,9 @@ class Algorithm_Count:
         # Draws bounding boxes, text, and masks on a given frame for detected persons.
         if box_id != -1:
             cv2.rectangle(frame, (x1, y1), (x2, y2), color.rectangle(), 2)
-            cvzone.putTextRect(frame, f"{class_id}: {box_id}: {score:.2f}", (x1, y1 - 10), 1, 1, color.text1(), color.text2())
+            # cvzone.putTextRect(frame, f"{class_id}: {box_id}: {score:.2f}", (x1, y1 - 10), 1, 1, color.text1(), color.text2())
             cx, cy = self.change_coord_point(x1, x2, y1, y2)
-            cv2.circle(frame, (cx, cy), 4, color.point(), -1)  
+            # cv2.circle(frame, (cx, cy), 4, color.point(), -1)  
             # Check if mask is valid and draw it
             if mask is not None:
                 # cv2.fillPoly(frame, [mask], color.mask()) # Fill the mask with a color
@@ -288,24 +310,17 @@ class Algorithm_Count:
                 cv2.rectangle(frame, (x1, y1), (x2, y2), color.boundingBox1(), 2)
                 cv2.circle(frame, (cx, cy), 4, color.point(), -1)  
                 cvzone.putTextRect(frame, label, (x1 + 10, y1 - 10), 1, 1, color.text1(), color.text2())
-                # self.entering.add(id)
                 if id not in self.entering:
                     self.entering[id] = {
                         'time': datetime.datetime.now(),
                         'face_crops': None  # Initialize face_crops as None
                     }
 
-
-                # Crop the face and save it
-                # face_crop = frame[y1:y2, x1:x2]  # Ensure y1, y2, x1, x2 are within bounds
-                # downloads_path = os.path.join(os.path.expanduser('~'), 'Downloads')
-                # filename = os.path.join(downloads_path, f"face_{id}_{datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.jpg")
-                # cv2.imwrite(filename, face_crop)
-                
                 # Ensure the cropped face is valid before adding to the set
-                if 0 <= y1 < frame.shape[0] and 0 <= y2 < frame.shape[0] and 0 <= x1 < frame.shape[1] and 0 <= x2 < frame.shape[1]:
+                if all(0 <= coord < frame.shape[0] for coord in [y1, y2]) and all(0 <= coord < frame.shape[1] for coord in [x1, x2]):
+                    margin = 50
                     if self.entering[id]['face_crops'] is None:  # Only set if not already assigned
-                        face_crop = frame[y1:y2, x1:x2] # crop the face
+                        face_crop = frame[y1-margin: y2+margin, x1-margin: x2+margin] # crop the face
                         serialized_frame = pickle.dumps(face_crop)  # Serialize the frame
                         compressed_frame = zlib.compress(serialized_frame)  # Compress the serialized frame
                         self.entering[id]['face_crops'] = compressed_frame  # Store the compressed crop
@@ -348,20 +363,21 @@ class Algorithm_Count:
                 cv2.rectangle(frame, (x1, y1), (x2, y2), color.boundingBox2(), 2)
                 cv2.circle(frame, (cx, cy), 4, color.point(), -1)  
                 cvzone.putTextRect(frame, label, (x1 + 10, y1 - 10), 1, 1, color.text1(), color.text2())
-                # self.exiting.add(id)
+
                 if id not in self.exiting:
                     self.exiting[id] = {
                         'time': datetime.datetime.now(),
                         'face_crops': None  # Initialize face_crops as None
-                    }
+                }
 
                 # Ensure the cropped face is valid before adding to the set
-                if 0 <= y1 < frame.shape[0] and 0 <= y2 < frame.shape[0] and 0 <= x1 < frame.shape[1] and 0 <= x2 < frame.shape[1]:
+                if all(0 <= coord < frame.shape[0] for coord in [y1, y2]) and all(0 <= coord < frame.shape[1] for coord in [x1, x2]):
+                    margin = 50
                     if self.exiting[id]['face_crops'] is None:  # Only set if not already assigned
-                        face_crop = frame[y1:y2, x1:x2] # crop the face
-                        serialized_frame = pickle.dumps(face_crop)  # Serialize the frame
-                        compressed_frame = zlib.compress(serialized_frame)  # Compress the serialized frame
-                        self.exiting[id]['face_crops'] = compressed_frame  # Store the compressed crop
+                            face_crop = frame[y1-margin: y2+margin, x1-margin: x2+margin] # crop the face
+                            serialized_frame = pickle.dumps(face_crop)  # Serialize the frame
+                            compressed_frame = zlib.compress(serialized_frame)  # Compress the serialized frame
+                            self.exiting[id]['face_crops'] = compressed_frame  # Store the compressed crop
 
     # Method to draw polylines for specified areas and display counts
     def draw_polylines(self, frame):
@@ -399,8 +415,8 @@ class Algorithm_Count:
                 frame = cv2.resize(frame, self.frame_size)
 
                 # detections = self.detect_object(frame)
-                detections_person, detections_face = self.detect_BboxOnly(frame)
-                self.counter(frame, detections_person, detections_face)
+                detections_person = self.detect_person(frame)
+                self.counter(frame, detections_person)
 
                 out.write(frame)
                 # self.show_time(frame)
@@ -439,6 +455,7 @@ class Algorithm_Count:
                         for person_id, details in self.exiting.items()
                     }
                 }
+            
         return result
 
 if __name__ == '__main__':
@@ -447,5 +464,7 @@ if __name__ == '__main__':
     sample_video_path = 'Sample Test File\\test_video.mp4'
     frame_width = 1280
     frame_height = int(frame_width / 16 * 9)   
-    algo = Algorithm_Count(sample_video_path, area1, area2, (frame_width, frame_height))
+    coords = None
+    algo = Algorithm_Count(sample_video_path, area1, area2, coords, (frame_width, frame_height))
     result = algo.main()
+    # print(result)
