@@ -438,23 +438,23 @@ class Algorithm_Count:
 
         # Return count of people entering and exiting
         result = {
-                    'total_people_entering': len(self.entering),
-                    'total_people_exiting': len(self.exiting),
-                    'entering_details': {
-                        person_id: {
-                            'time': details['time'],
-                            'face_crops': details['face_crops']
-                        }
-                        for person_id, details in self.entering.items()
-                    },
-                    'exiting_details': {
-                        person_id: {
-                            'time': details['time'],
-                            'face_crops': details['face_crops']
-                        }
-                        for person_id, details in self.exiting.items()
-                    }
+            'total_people_entering': len(self.entering),
+            'total_people_exiting': len(self.exiting),
+            'entering_details': {
+                person_id: {
+                    'time': details['time'],
+                    'face_crops': details['face_crops']
                 }
+                for person_id, details in self.entering.items()
+            },
+            'exiting_details': {
+                person_id: {
+                    'time': details['time'],
+                    'face_crops': details['face_crops']
+                }
+                for person_id, details in self.exiting.items()
+            }
+        }
             
         return result
 
