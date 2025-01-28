@@ -10,6 +10,7 @@ import pickle
 import zlib
 import threading
 import queue
+import concurrent.futures
 
 # Define a class to manage colors used in the application
 class Color:
@@ -40,6 +41,12 @@ print(f'Using device: {device}')
 model_person = YOLO('yolo-Weights/yolov8n.pt').to(device)  # Model for person segmentation
 model_face = YOLO('yolo-Weights/yolov10n-face.pt').to(device)   # Model for face detection
 
+# Add warmup to initialize models
+_ = model_person.predict(np.zeros((640, 640, 3), dtype=np.uint8), verbose=False)
+_ = model_face.predict(np.zeros((640, 640, 3), dtype=np.uint8), verbose=False)
+# Disable gradients for inference
+torch.set_grad_enabled(False)
+
 
 # Define a class to handle the counting algorithm
 class Algorithm_Count:
@@ -62,14 +69,19 @@ class Algorithm_Count:
         cv2.namedWindow(self.name_frame)
 
     # Method to detect objects in a frame
+    # Add to detection methods to ensure GPU tensor handling
     def detect_person(self, frame):
-        # Detect persons and faces using different models
-        results_person = model_person.track(frame, conf=0.6, classes=[0], persist=True, tracker="bytetrack.yaml")  # Detect persons only (class 0)
+        results = model_person.track(frame,
+            tracker="bytetrack.yaml",
+            persist=True,
+            tracker_settings={
+                "track_thresh": 0.4,  # Higher threshold to reduce tracked objects
+                "match_thresh": 0.8,
+                "frame_rate": 30
+            }
+        )
+        return self.process_results(results)
 
-        # Process results
-        person_detections = self.process_results(results_person)
-
-        return person_detections
     
     # Method to detect objects in a frame
     def detect_face_person(self, frame):
@@ -102,20 +114,6 @@ class Algorithm_Count:
                 detections.append([int(x1), int(y1), int(x2), int(y2), int(box_id), int(class_id), float(score), mask])
 
         return detections
-    
-    # Method to display elapsed time on the frame
-    def show_time(self, frame):
-        elapsed_time = time.time() - self.start_time
-
-        # Convert elapsed time to hours, minutes, seconds, and milliseconds
-        milliseconds = int(elapsed_time * 1000)
-        hours, milliseconds = divmod(milliseconds, 3600000)
-        minutes, milliseconds = divmod(milliseconds, 60000)
-        seconds = (milliseconds / 1000.0)
-
-        # Display the time in the format "hour:minute:second.millisecond"
-        time_str = "Running Time: {:02}:{:02}:{:06.3f}".format(int(hours), int(minutes), seconds)
-        cvzone.putTextRect(frame, time_str, (20, 480), 1, 1, color.text1(), color.text2())
 
     def change_coord_point(self, x1, x2, y1, y2):
         x, y = (0.5, 0.04) if self.coordinates is None else self.coordinates
@@ -124,18 +122,12 @@ class Algorithm_Count:
         return new_x, new_y
 
     # Method to count people entering and exiting
-    def counter(self, frame, detections_person):
-        for detect in detections_person:
-            x1, y1, x2, y2, box_id, class_id, score, mask = detect
-            label = f"{box_id} Person: {score:.2f}"
-            
-            self.person_bounding_boxes(frame, x1, y1, x2, y2, box_id, class_id, score, mask)
-            detections_face = self.detect_face_person(frame)
-            self.face_bounding_boxes(frame, detections_face)
-            self.track_people_entering(frame, x1, y1, x2, y2, box_id, label)
-            self.track_people_exiting(frame, x1, y1, x2, y2, box_id, label)
-            
-        self.draw_polylines(frame)
+    def counter(self, frame, detections_person, detections_face):
+        # Parallelize detection and tracking
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            executor.submit(self.track_people_entering, frame, detections_person)
+            executor.submit(self.track_people_exiting, frame, detections_person)
+            executor.submit(self.face_bounding_boxes, frame, detections_face)
 
     # Method to draw bounding boxes around detected persons
     def person_bounding_boxes(self, frame, x1, y1, x2, y2, box_id, class_id, score, mask):
@@ -245,7 +237,12 @@ class Algorithm_Count:
 
         downloads_path = os.path.join(os.path.expanduser('~'), 'Downloads')
         output_file_path = os.path.join(downloads_path, 'output_video.avi')
-        out = cv2.VideoWriter(output_file_path, cv2.VideoWriter_fourcc(*'XVID'), 24.0, self.frame_size)
+        out = cv2.VideoWriter(
+            output_file_path, 
+            cv2.VideoWriter_fourcc(*'H264'),  # Better compression
+            20.0,  # Reduced FPS
+            (640, 360)  # Smaller output resolution
+        )
 
         while True:
             if not self.paused:
@@ -297,14 +294,64 @@ class Algorithm_Count:
         }
             
         return result
+    
+# Use separate threads for I/O, processing, and display
+frame_queue = queue.Queue(maxsize=3)  # Reduced to minimize latency
+display_queue = queue.Queue(maxsize=2)  # For faster display updates
+
+def video_capture_thread(cap, frame_queue):
+    while True:
+        ret, frame = cap.read()
+        if not ret: break
+        frame = cv2.resize(frame, algo.frame_size)  # Resize early
+        if frame_queue.qsize() < 3:
+            frame_queue.put(frame)
+
+def processing_thread(frame_queue, algo):
+    while True:
+        if not frame_queue.empty():
+            frame = frame_queue.get()
+            # Batch processing for both models
+            detections_person = algo.detect_person(frame)
+            detections_face = algo.detect_face_person(frame)  # Single call per frame
+            algo.counter(frame, detections_person, detections_face)  # Modified method
+            if not display_queue.full():
+                display_queue.put(frame)
+
+def display_thread(display_queue):
+    while True:
+        if not display_queue.empty():
+            frame = display_queue.get()
+            cv2.imshow(algo.name_frame, frame)
+            if cv2.waitKey(1) & 0xFF == ord('q'): break
 
 if __name__ == '__main__':
     area1 = [(359, 559), (400, 559), (667, 675), (632, 681)]
     area2 = [(346, 563), (313, 566), (579, 703), (624, 694)]
     sample_video_path = 'Sample Test File\\test_video.mp4'
-    frame_width = 1280
-    frame_height = int(frame_width / 16 * 9)   
+    frame_width = 640  # Reduced from 1280
+    frame_height = 360 
     coords = None
     algo = Algorithm_Count(sample_video_path, area1, area2, coords, (frame_width, frame_height))
-    result = algo.main()
+
+    # Create queues
+    frame_queue = queue.Queue(maxsize=3)
+    display_queue = queue.Queue(maxsize=2)  # Add this
+    
+    # Start threads with display_queue
+    processing_thread = threading.Thread(
+        target=processing_thread,
+        args=(frame_queue, algo, display_queue)  # Pass display_queue here
+    )
+    
+    # Add display thread
+    def display_thread(display_queue):
+        while True:
+            if not display_queue.empty():
+                frame = display_queue.get()
+                cv2.imshow(algo.name_frame, frame)
+                if cv2.waitKey(1) & 0xFF == ord('q'): break
+
+    display_thread = threading.Thread(target=display_thread, args=(display_queue,))
+    display_thread.start()
     # print(result)
