@@ -49,5 +49,3 @@ if __name__ == "__main__":
     webcam_processor = Algorithm_Detection()
     webcam_processor.detectPeople()
     '''
-    # example of the output
-    # Coordinates from ClickPoints (Area 1): [(312, 388), (289, 390), (474, 469), (497, 462)]
