@@ -50,3 +50,4 @@ if __name__ == "__main__":
     webcam_processor.detectPeople()
     '''
     # example of the output
+    # backend
